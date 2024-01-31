@@ -1,3 +1,3 @@
 module load python
-source activate sparse-fft
-sbatch nmse_vs_snr.sh
+source activate
+sbatch run_exp.sh

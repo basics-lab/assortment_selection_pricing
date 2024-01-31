@@ -9,7 +9,7 @@ from multiprocessing import Pool
 
 if __name__ == "__main__":
 
-    compute_pool = Pool(8)
+    compute_pool = Pool(5)
 
     d = 5
     L0 = 0.2
