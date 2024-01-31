@@ -13,10 +13,10 @@ if __name__ == "__main__":
     compute_pool = Pool(5)
 
     d = 10
-    L0 = 0.1
+    L0 = 0.5
     T = 2000
     N = 100
-    K = 10
+    K = 3
 
     T0_Dynamic = np.random.randint(100, 150, 1)
 
