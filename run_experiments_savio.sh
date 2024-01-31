@@ -8,4 +8,7 @@
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=erginbas@berkeley.edu
 
-python experiments.py
+for i in {1..10}
+do
+  python experiments.py &
+done
