@@ -8,8 +8,4 @@
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=erginbas@berkeley.edu
 
-for i in {1..10}
-do
-  echo $i
-  python experiments.py &
-done
+python experiments.py
