@@ -12,13 +12,13 @@ if __name__ == "__main__":
 
     compute_pool = Pool(5)
 
-    d = 5
-    L0 = 0.2
-    T = 1000
+    d = 10
+    L0 = 0.1
+    T = 2000
     N = 100
-    K = 5
+    K = 10
 
-    T0_Dynamic = np.random.randint(50, 60, 1)
+    T0_Dynamic = np.random.randint(100, 150, 1)
 
     experiment_name = f"d{d}_T{T}_n{N}_K{K}_" + str(uuid.uuid4().hex[:8])
     os.makedirs(f"results/{experiment_name}")
@@ -98,7 +98,7 @@ if __name__ == "__main__":
         end = time.time()
 
         # logging.info(f"{alpha_star[assortment]}, {beta_star[assortment]}, {prices[assortment]}, {np.exp(values[assortment]) / (1 + np.sum(np.exp(values[assortment])))}, {i_t_assortment}")
-        # logging.info(f"Dynamic Assortment theta NMSE: {np.linalg.norm(dynamicAssortment.theta - theta_star) / np.linalg.norm(theta_star)}")
+        logging.info(f"Dynamic Assortment theta NMSE: {np.linalg.norm(dynamicAssortment.theta - theta_star) / np.linalg.norm(theta_star)}")
         # logging.info(dynamicAssortment.theta)
         history_expected_revenue[1, t] = expected_revenue(values[assortment], prices[assortment])
         history_time[0, t] = end - start
@@ -114,7 +114,7 @@ if __name__ == "__main__":
         revenue = prices[i_t] if i_t is not None else 0
         end = time.time()
 
-        # logging.info(f"Newton Assortment theta NMSE: {np.linalg.norm(newtonAssortment.theta - theta_star) / np.linalg.norm(theta_star)}")
+        logging.info(f"Newton Assortment theta NMSE: {np.linalg.norm(newtonAssortment.theta - theta_star) / np.linalg.norm(theta_star)}")
         history_expected_revenue[2, t] = expected_revenue(values[assortment], prices[assortment])
         history_time[1, t] = end - start
         logging.info(f"Newton Assortment regret = {history_expected_revenue[0, t] - history_expected_revenue[2, t]}")

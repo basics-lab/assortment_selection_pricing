@@ -127,19 +127,20 @@ def grad_reduce(input_grad, sum_grad):
     return sum_grad[0] + input_grad[0], sum_grad[1] + input_grad[1]
 
 
-def solve_mle(offered_contexts, selected_contexts, d, init_theta=None):
+def solve_mle(offered_contexts, selected_contexts, d, init_theta=None, scaling=1):
     if init_theta is None or np.isnan(init_theta).any():
         theta = 0.5 * np.ones(d)
     else:
         theta = init_theta
     iter = 0
     while True:
+        d_half = d // 2
         def grad_map(input_contexts):
             offered_contexts, selected_contexts = input_contexts
             utilities = offered_contexts @ theta
             terms = np.exp(utilities)
             probs = terms / (1 + np.sum(terms))
-            grad_new = - np.sum((probs * offered_contexts.T).T, axis=0) + selected_contexts
+            grad_new = probs @ offered_contexts - selected_contexts
             W = np.diag(probs) - np.outer(probs, probs)
             hess_new = offered_contexts.T @ W @ offered_contexts
             return grad_new, hess_new
@@ -147,11 +148,14 @@ def solve_mle(offered_contexts, selected_contexts, d, init_theta=None):
         results = map(grad_map, zip(offered_contexts, selected_contexts))
         grad, hess = reduce(grad_reduce, results)
 
-        lmb = 0.1
-        reg_grad = - lmb/d * theta
-        reg_hess = lmb/d * np.identity(d)
+        lmb = 1
 
-        grad = grad + reg_grad
+        # reg_grad = lmb/d * theta
+        # reg_grad[d_half:] = reg_grad[d_half:] / scaling
+        # grad = grad + reg_grad
+
+        reg_hess = lmb * np.identity(d)
+        reg_hess[d_half:, d_half:] = reg_hess[d_half:, d_half:] / scaling
         hess = hess + reg_hess
 
         # eigh = np.linalg.eigh(hess)
@@ -159,8 +163,8 @@ def solve_mle(offered_contexts, selected_contexts, d, init_theta=None):
 
         iter += 1
         update = np.linalg.inv(hess) @ grad
-        theta = theta + update
-        if np.linalg.norm(update) < 1e-5 or iter > 5:
+        theta = theta - update
+        if np.linalg.norm(update) < 1e-5 or iter > 50:
             break
 
     # X_data = np.concatenate(offered_contexts, axis=0)
@@ -202,7 +206,7 @@ class DynamicAlgorithms:
     def get_assortment_and_pricing(self, contexts):
         if self.t < self.T0:
             assortment = np.random.choice(self.n, size=self.K, replace=False)
-            prices = np.random.uniform(1, 2, size=self.n)
+            prices = np.random.uniform(6, 10, size=self.n)
         else:
             psi, phi = self.theta[:self.d], self.theta[self.d:]
             # define parameters of h(p ; h_p) = h_p[0] - h_p[1] p + sqrt{ h_p[2] - 2 * h_p[3] p + h_p[4] p^2 }.
@@ -231,7 +235,7 @@ class DynamicAssortmentPricing(DynamicAlgorithms):
             probs = np.exp(utilities) / (1 + np.sum(np.exp(utilities)))
             Sigma = np.diag(probs) - np.outer(probs, probs)
             self.V += x_tilde.T @ Sigma @ x_tilde
-            self.theta = solve_mle(self.offered_contexts, self.selected_contexts, 2 * self.d, init_theta=self.theta)
+            self.theta = solve_mle(self.offered_contexts, self.selected_contexts, 2 * self.d, init_theta=self.theta, scaling=self.L0 ** 2)
         else:
             self.V += (1 / self.K ** 2) * x_tilde.T @ x_tilde
         self.t += 1
@@ -251,7 +255,8 @@ class OhIyengarWithPricing(DynamicAlgorithms):
             self.selected_contexts.append(np.concatenate([contexts[i_t, :self.d], - prices[i_t] * contexts[i_t, self.d:]]))
         else:
             self.selected_contexts.append(np.zeros(2 * self.d))
-        self.theta = solve_mle(self.offered_contexts, self.selected_contexts, 2 * self.d, init_theta=self.theta)
+        if self.t >= self.T0:
+            self.theta = solve_mle(self.offered_contexts, self.selected_contexts, 2 * self.d, init_theta=self.theta, scaling=self.L0 ** 2)
         self.t += 1
 
 
@@ -259,6 +264,7 @@ class NewtonAssortmentPricing(DynamicAlgorithms):
 
     def __init__(self, n, d, K, L0, T0, pool):
         self.theta0 = np.zeros(2 * d)
+        self.alpha_g = 0.001
         super().__init__(n, d, K, L0, T0, pool)
 
     def mle_online_update(self, offered_contexts, selected_contexts):
@@ -270,14 +276,14 @@ class NewtonAssortmentPricing(DynamicAlgorithms):
         V_half = np.linalg.cholesky(self.V)
 
         theta_param = cp.Variable(2 * self.d)
-        obj = cp.Minimize(cp.sum_squares(theta_param @ V_half) + (G - 2 * self.V @ self.theta) @ theta_param)
-        constraints = [cp.sum_squares(theta_param - self.theta0) <= self.L0 / 2]
+        obj = cp.Minimize(cp.sum_squares(theta_param @ V_half) + theta_param @ (0.2 * G - 2 * self.V @ self.theta))
+        constraints = [cp.sum_squares(theta_param - self.theta0) <= 3 * self.L0]
         prob = cp.Problem(obj, constraints)
         prob.solve()
 
-        return np.array(theta_param.value)
+        theta = np.array(theta_param.value)
 
-
+        return theta
 
     def selection_feedback(self, i_t, contexts, assortment, prices):
         x_tilde = contexts[assortment]
@@ -290,8 +296,8 @@ class NewtonAssortmentPricing(DynamicAlgorithms):
                 self.selected_contexts.append(np.zeros(2 * self.d))
             self.V += (1 / self.K ** 2) * x_tilde.T @ x_tilde
         if self.t == self.T0:
-            self.theta = solve_mle(self.offered_contexts, self.selected_contexts, 2 * self.d, init_theta=self.theta)
-            self.theta0 = self.theta
+            self.theta = solve_mle(self.offered_contexts, self.selected_contexts, 2 * self.d, init_theta=self.theta, scaling=self.L0 ** 2 )
+            self.theta0 = self.theta.copy()
         if self.t >= self.T0:
             offered_contexts = x_tilde
             if i_t is not None:
@@ -357,7 +363,7 @@ class JavanmardDynamicPricing:
             else:
                 self.selected_contexts.append(np.zeros(2 * self.d))
         if self.episode_t == self.d - 1:
-            self.theta = solve_mle(self.offered_contexts, self.selected_contexts, 2 * self.d, init_theta=self.theta)
+            self.theta = solve_mle(self.offered_contexts, self.selected_contexts, 2 * self.d, init_theta=self.theta, scaling=self.L0 ** 2)
         self.t += 1
         self.episode_t += 1
         # logging.debug(len(self.selected_contexts))
@@ -419,7 +425,7 @@ def goyalperivier_update(theta, V, offered_contexts, selected_contexts, lmb):
     terms = np.exp(utilities)
     probs = terms / (1 + np.sum(terms))
     G = np.sum((probs * offered_contexts.T).T, axis=0) - selected_contexts
-    theta = theta - np.linalg.pinv(V + lmb * np.identity(len(V))) @ G
+    theta = theta - 0.2 * np.linalg.pinv(V + lmb * np.identity(len(V))) @ G
     return theta
 
 
