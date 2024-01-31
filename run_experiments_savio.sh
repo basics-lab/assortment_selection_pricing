@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=synt_exp
+#SBATCH --job-name=menu_price
 #SBATCH --account=fc_basics
 #SBATCH --partition=savio2
 #SBATCH --time=24:00:00
