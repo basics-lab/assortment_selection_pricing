@@ -6,6 +6,7 @@ import logging
 import time
 from multiprocessing import Pool
 
+print("STARTED EXPERIMENTS")
 
 if __name__ == "__main__":
 
