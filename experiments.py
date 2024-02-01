@@ -13,19 +13,19 @@ if __name__ == "__main__":
 
     compute_pool = Pool(5)
 
-    d = int(sys.argv[1])
-    L0 = float(sys.argv[2])
-    T = int(sys.argv[3])
-    N = int(sys.argv[4])
-    K = int(sys.argv[5])
-    T0_low = int(sys.argv[6])
+    # d = int(sys.argv[1])
+    # L0 = float(sys.argv[2])
+    # T = int(sys.argv[3])
+    # N = int(sys.argv[4])
+    # K = int(sys.argv[5])
+    # T0_low = int(sys.argv[6])
 
-    # d = 5
-    # L0 = 0.3
-    # T = 500
-    # N = 5
-    # K = 5
-    # T0_low = 100
+    d = 5
+    L0 = 0.3
+    T = 500
+    N = 5
+    K = 5
+    T0_low = 100
 
     print(f"Arguments passed: d = {d}, L0 = {L0}, T = {T}, K = {K}, N = {N}, T0_low = {T0_low}")
 

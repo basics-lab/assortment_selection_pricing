@@ -9,10 +9,10 @@
 #SBATCH --mail-user=erginbas@berkeley.edu
 
 parallel --progress -j 10 python3 experiments.py {1} {2} {3} {4} {5} {6} ::: \
-5 10 ::: `#d` \
-0.1 0.3 0.5 ::: `#L0` \
+5 ::: `#d` \
+0.3 ::: `#L0` \
 2000 ::: `#T` \
-10 100 ::: `#N`\
-5 10 ::: `#K` \
-100 200 ::: `#T0_low`
+5 ::: `#N`\
+5 ::: `#K` \
+100 ::: `#T0_low`
 {1..5}
