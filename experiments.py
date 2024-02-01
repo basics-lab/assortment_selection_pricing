@@ -30,6 +30,7 @@ if __name__ == "__main__":
     print(f"Arguments passed: d = {d}, L0 = {L0}, T = {T}, K = {K}, N = {N}, T0_low = {T0_low}")
 
     T0_Dynamic = np.random.randint(T0_low, T0_low + 100, 1)
+    T0_Online = int(1.5 * T0_Dynamic)
 
     experiment_name = f"d{d}_L{L0}_T{T}_N{N}_K{K}_" + str(uuid.uuid4().hex[:8])
     os.makedirs(f"results/{experiment_name}")
@@ -66,7 +67,7 @@ if __name__ == "__main__":
     # algorithms
     offlineOptimal = algorithms.OfflineOptimalAlgorithm(K)
     dynamicAssortment = algorithms.DynamicAssortmentPricing(N, d, K, L0, T0=T0_Dynamic, pool=compute_pool)
-    newtonAssortment = algorithms.NewtonAssortmentPricing(N, d, K, L0, T0=T0_Dynamic, pool=compute_pool)
+    newtonAssortment = algorithms.NewtonAssortmentPricing(N, d, K, L0, T0=T0_Online, pool=compute_pool)
     javanmardPricing = algorithms.JavanmardDynamicPricing(N, d, K, L0)
     ohIyengarAssortment = algorithms.OhIyengarAssortmentSelection(N, d, K, L0, T0=T0_Dynamic, fixed_prices=5)
     ohIyengarPricing = algorithms.OhIyengarWithPricing(N, d, K, L0, T0=T0_Dynamic, pool=compute_pool)
@@ -79,7 +80,7 @@ if __name__ == "__main__":
     for t in range(T):
 
         logging.info(f"-------------------------------------")
-        logging.info(f"t = {t}")
+        logging.info(f"t = {t}, T0_Dynamic = {T0_Dynamic}, T0_Online = {T0_Online}")
 
         contexts = generate_context(N, d)
         alpha_star = contexts[:, :d] @ psi_star

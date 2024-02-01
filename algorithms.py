@@ -148,7 +148,7 @@ def solve_mle(offered_contexts, selected_contexts, d, init_theta=None, scaling=1
         results = map(grad_map, zip(offered_contexts, selected_contexts))
         grad, hess = reduce(grad_reduce, results)
 
-        lmb = 1
+        lmb = 5
 
         # reg_grad = lmb/d * theta
         # reg_grad[d_half:] = reg_grad[d_half:] / scaling
@@ -241,25 +241,6 @@ class DynamicAssortmentPricing(DynamicAlgorithms):
         self.t += 1
 
 
-class OhIyengarWithPricing(DynamicAlgorithms):
-    def __init__(self, n, d, K, L0, T0, pool):
-        super().__init__(n, d, K, L0, T0, pool)
-        self.alpha_g = 0.1
-
-    def selection_feedback(self, i_t, contexts, assortment, prices):
-        x_tilde = contexts[assortment]
-        x_tilde[:, self.d:] = - x_tilde[:, self.d:] * prices[assortment, np.newaxis]
-        self.V += x_tilde.T @ x_tilde
-        self.offered_contexts.append(x_tilde)
-        if i_t is not None:
-            self.selected_contexts.append(np.concatenate([contexts[i_t, :self.d], - prices[i_t] * contexts[i_t, self.d:]]))
-        else:
-            self.selected_contexts.append(np.zeros(2 * self.d))
-        if self.t >= self.T0:
-            self.theta = solve_mle(self.offered_contexts, self.selected_contexts, 2 * self.d, init_theta=self.theta, scaling=self.L0 ** 2)
-        self.t += 1
-
-
 class NewtonAssortmentPricing(DynamicAlgorithms):
 
     def __init__(self, n, d, K, L0, T0, pool):
@@ -277,7 +258,7 @@ class NewtonAssortmentPricing(DynamicAlgorithms):
 
         theta_param = cp.Variable(2 * self.d)
         obj = cp.Minimize(cp.sum_squares(theta_param @ V_half) + theta_param @ (0.2 * G - 2 * self.V @ self.theta))
-        constraints = [cp.sum_squares(theta_param - self.theta0) <= 3 * self.L0]
+        constraints = [cp.sum_squares(theta_param - self.theta0) <= self.L0]
         prob = cp.Problem(obj, constraints)
         prob.solve()
 
@@ -417,6 +398,25 @@ class OhIyengarAssortmentSelection:
             self.selected_contexts.append(np.zeros(self.d))
         if self.t >= self.T0:
             self.theta = solve_mle(self.offered_contexts, self.selected_contexts, self.d, init_theta=self.theta)
+        self.t += 1
+
+
+class OhIyengarWithPricing(DynamicAlgorithms):
+    def __init__(self, n, d, K, L0, T0, pool):
+        super().__init__(n, d, K, L0, T0, pool)
+        self.alpha_g = 0.1
+
+    def selection_feedback(self, i_t, contexts, assortment, prices):
+        x_tilde = contexts[assortment]
+        x_tilde[:, self.d:] = - x_tilde[:, self.d:] * prices[assortment, np.newaxis]
+        self.V += x_tilde.T @ x_tilde
+        self.offered_contexts.append(x_tilde)
+        if i_t is not None:
+            self.selected_contexts.append(np.concatenate([contexts[i_t, :self.d], - prices[i_t] * contexts[i_t, self.d:]]))
+        else:
+            self.selected_contexts.append(np.zeros(2 * self.d))
+        if self.t >= self.T0:
+            self.theta = solve_mle(self.offered_contexts, self.selected_contexts, 2 * self.d, init_theta=self.theta, scaling=self.L0 ** 2)
         self.t += 1
 
 
