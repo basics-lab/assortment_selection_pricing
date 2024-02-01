@@ -425,7 +425,7 @@ def goyalperivier_update(theta, V, offered_contexts, selected_contexts, lmb):
     terms = np.exp(utilities)
     probs = terms / (1 + np.sum(terms))
     G = np.sum((probs * offered_contexts.T).T, axis=0) - selected_contexts
-    theta = theta - 0.2 * np.linalg.pinv(V + lmb * np.identity(len(V))) @ G
+    theta = theta - np.linalg.pinv(V + lmb * np.identity(len(V))) @ G
     return theta
 
 
@@ -469,10 +469,10 @@ class GoyalPerivierDynamicPricing:
             if expected_revenue_k > best_exp_rev:
                 assortment = assortment_k
                 best_exp_rev = expected_revenue_k
-        random_shock = (2 * np.random.choice(2, len(prices)) - 1) / ((self.t + 1) ** (1/4))
-        prices = prices + random_shock
-        # logging.debug(assortment)
-        # logging.debug(prices)
+        # random_shock = (2 * np.random.choice(2, len(prices)) - 1) / ((self.t + 1) ** (1/4))
+        # prices = prices + random_shock
+        logging.debug([alpha, beta])
+        logging.debug(prices)
         return assortment, prices
 
     def selection_feedback(self, i_t, contexts, assortment, prices):
@@ -488,4 +488,4 @@ class GoyalPerivierDynamicPricing:
         else:
             selected_contexts = np.zeros(2 * self.d)
         # update the parameter
-        self.theta = goyalperivier_update(self.theta, self.V, offered_contexts, selected_contexts, self.d * np.log(self.t + 1))
+        self.theta = goyalperivier_update(self.theta, self.V, offered_contexts, selected_contexts, 10 * self.d * np.log(self.t + 1))

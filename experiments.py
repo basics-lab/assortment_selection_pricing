@@ -5,6 +5,7 @@ import algorithms
 import logging
 import time
 from multiprocessing import Pool
+import sys
 
 print("STARTED EXPERIMENTS")
 
@@ -12,15 +13,25 @@ if __name__ == "__main__":
 
     compute_pool = Pool(5)
 
-    d = 10
-    L0 = 0.5
-    T = 2000
-    N = 100
-    K = 3
+    # d = int(sys.argv[1])
+    # L0 = float(sys.argv[2])
+    # T = int(sys.argv[3])
+    # N = int(sys.argv[4])
+    # K = int(sys.argv[5])
+    # T0_low = int(sys.argv[6])
 
-    T0_Dynamic = np.random.randint(100, 150, 1)
+    d = 5
+    L0 = 0.3
+    T = 500
+    N = 5
+    K = 5
+    T0_low = 100
 
-    experiment_name = f"d{d}_T{T}_n{N}_K{K}_" + str(uuid.uuid4().hex[:8])
+    print(f"Arguments passed: d = {d}, L0 = {L0}, T = {T}, K = {K}, N = {N}, T0_low = {T0_low}")
+
+    T0_Dynamic = np.random.randint(T0_low, T0_low + 100, 1)
+
+    experiment_name = f"d{d}_L{L0}_T{T}_N{N}_K{K}_" + str(uuid.uuid4().hex[:8])
     os.makedirs(f"results/{experiment_name}")
     print(f"Experiment started: {experiment_name}")
     logging.basicConfig(filename=f"results/{experiment_name}/experiment.log", format='%(asctime)s: %(message)s', level=logging.DEBUG)
