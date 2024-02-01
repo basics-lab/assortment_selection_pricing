@@ -21,11 +21,11 @@ if __name__ == "__main__":
     T0_low = int(sys.argv[6])
 
     # d = 5
-    # L0 = 0.3
-    # T = 500
+    # L0 = 0.5
+    # T = 2000
     # N = 5
     # K = 5
-    # T0_low = 100
+    # T0_low = 150
 
     print(f"Arguments passed: d = {d}, L0 = {L0}, T = {T}, K = {K}, N = {N}, T0_low = {T0_low}")
 

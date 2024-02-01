@@ -469,8 +469,8 @@ class GoyalPerivierDynamicPricing:
             if expected_revenue_k > best_exp_rev:
                 assortment = assortment_k
                 best_exp_rev = expected_revenue_k
-        # random_shock = (2 * np.random.choice(2, len(prices)) - 1) / ((self.t + 1) ** (1/4))
-        # prices = prices + random_shock
+        random_shock = (2 * np.random.choice(2, len(prices)) - 1) / ((self.t + 1) ** (1/4))
+        prices = prices + random_shock
         logging.debug([alpha, beta])
         logging.debug(prices)
         return assortment, prices
