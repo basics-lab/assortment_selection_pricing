@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "assortment_pricing"
+version = "0.1.0"
+description = "A project for optimal assortment pricing using machine learning and economic modeling."
+authors = [
+    { name = "Yigit Efe Erginbas", email = "erginbas@berkeley.edu" }
+]
+dependencies = [
+    "numpy",
+    "scipy",
+    "cvxpy"
+]
+
+[tool.setuptools]
+packages = ["assortment_pricing"]
+package-dir = {"" = "src"}
+
+[tool.black]
+line-length = 88
+
+[tool.isort]
+profile = "black"
+
+[tool.mypy]
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

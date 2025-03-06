@@ -1,24 +1,33 @@
 import numpy as np
 import uuid
 import os
-import algorithms
 import logging
 import time
 from multiprocessing import Pool
-import sys
+import argparse
+from collections import defaultdict
 
-print("STARTED EXPERIMENTS")
+from assortment_pricing import algorithms
 
 if __name__ == "__main__":
 
     compute_pool = Pool(5)
+    parser = argparse.ArgumentParser(description='Run assortment selection and pricing experiments.')
+    parser.add_argument('-d', type=int, help='Dimensionality of the context vectors')
+    parser.add_argument('-L0', type=float, help='Minimum price senstitivity')
+    parser.add_argument('-T', type=int, help='Number of time periods')
+    parser.add_argument('-N', type=int, help='Number of available items')
+    parser.add_argument('-K', type=int, help='Number of items in the assortment')
+    parser.add_argument('-T0_low', type=int, help='Lower bound for number of initialization periods')
 
-    d = int(sys.argv[1])
-    L0 = float(sys.argv[2])
-    T = int(sys.argv[3])
-    N = int(sys.argv[4])
-    K = int(sys.argv[5])
-    T0_low = int(sys.argv[6])
+    args = parser.parse_args()
+
+    d = args.d
+    L0 = args.L0
+    T = args.T
+    N = args.N
+    K = args.K
+    T0_low = args.T0_low
 
     # d = 5
     # L0 = 0.5
@@ -29,8 +38,8 @@ if __name__ == "__main__":
 
     print(f"Arguments passed: d = {d}, L0 = {L0}, T = {T}, K = {K}, N = {N}, T0_low = {T0_low}")
 
-    T0_Dynamic = np.random.randint(T0_low, T0_low + 100, 1)
-    T0_Online = int(1.5 * T0_Dynamic)
+    T0_Dynamic = np.random.randint(T0_low, T0_low + 100, 1)[0] # number of initialization rounds
+    T0_Online = int(1.5 * T0_Dynamic) # number of initialization rounds with online learning
 
     experiment_name = f"d{d}_L{L0}_T{T}_N{N}_K{K}_" + str(uuid.uuid4().hex[:8])
     os.makedirs(f"results/{experiment_name}")
@@ -50,11 +59,9 @@ if __name__ == "__main__":
         probs = terms / np.sum(terms)
         return np.random.choice(items, p=probs)
 
-
-    def expected_revenue(values, prices):
+    def revenue_expectation(values, prices):
         probs = np.exp(values) / (1 + np.sum(np.exp(values)))
         return np.sum(prices * probs)
-
 
     def generate_context(n, d):
         context = np.random.normal(0, 1 / np.sqrt(d), size=(n, d))
@@ -63,19 +70,50 @@ if __name__ == "__main__":
         context2 = (np.sign(context2 @ phi_star) * context2.T).T
         return np.concatenate((context, context2 + L0 * phi_star / np.linalg.norm(phi_star) ** 2), axis=1)
 
+    offlineOptimal = algorithms.OfflineOptimalAlgorithm(K)
 
     # algorithms
-    offlineOptimal = algorithms.OfflineOptimalAlgorithm(K)
-    dynamicAssortment = algorithms.DynamicAssortmentPricing(N, d, K, L0, T0=T0_Dynamic, pool=compute_pool)
-    newtonAssortment = algorithms.NewtonAssortmentPricing(N, d, K, L0, T0=T0_Online, pool=compute_pool)
-    javanmardPricing = algorithms.JavanmardDynamicPricing(N, d, K, L0)
-    ohIyengarAssortment = algorithms.OhIyengarAssortmentSelection(N, d, K, L0, T0=T0_Dynamic, fixed_prices=5)
-    ohIyengarPricing = algorithms.OhIyengarWithPricing(N, d, K, L0, T0=T0_Dynamic, pool=compute_pool)
-    goyalPerivierDynamicPricing = algorithms.GoyalPerivierDynamicPricing(N, d, K, L0)
+    algorithms_list = [
+        ("CAP", algorithms.DynamicAssortmentPricing(N, d, K, L0, T0=T0_Dynamic, pool=compute_pool)),
+        ("CAP-ONS", algorithms.NewtonAssortmentPricing(N, d, K, L0, T0=T0_Online, pool=compute_pool)),
+        ("M3P", algorithms.JavanmardDynamicPricing(N, d, K, L0)),
+        ("DBL-MNL", algorithms.OhIyengarAssortmentSelection(N, d, K, L0, T0=T0_Dynamic, fixed_prices=5)),
+        ("DBL-MNL-Pricing", algorithms.OhIyengarWithPricing(N, d, K, L0, T0=T0_Dynamic, pool=compute_pool)),
+        ("ONS-MPP", algorithms.GoyalPerivierDynamicPricing(N, d, K, L0))
+    ]
 
-    # logger
-    history_expected_revenue = np.zeros((7, T))
-    history_time = np.zeros((6, T))
+    def algorithm_step(
+            algo_name: str,
+            algo: algorithms.Algorithm,
+            contexts,
+            alpha_star,
+            beta_star,
+            optimal_revenue,
+    ):
+        start = time.time()
+        assortment, prices = algo.get_assortment_and_pricing(contexts)
+        values = alpha_star - beta_star * prices
+        i_t_assortment = mnl_selection(values[assortment])
+        i_t = assortment[i_t_assortment] if i_t_assortment is not None else None
+        algo.selection_feedback(i_t, contexts, assortment, prices)
+        end = time.time()
+        observed_revenue = prices[i_t] if i_t is not None else 0
+        expected_revenue = revenue_expectation(values[assortment], prices[assortment])
+        try:
+            theta_NMSE = np.linalg.norm(algo.theta - theta_star) / np.linalg.norm(theta_star)  
+        except:
+            theta_NMSE = -1
+        logging.info(f"{algo_name:<20} theta NMSE: {theta_NMSE:<10.4f} regret = {optimal_revenue - expected_revenue:<10.4f}")
+        step_result = {
+            "time": end - start,
+            "optimal_revenue": optimal_revenue,
+            "observed_revenue": observed_revenue,
+            "expected_revenue": expected_revenue,
+            "theta_NMSE" : theta_NMSE,
+        }
+        return step_result
+
+    results = defaultdict(list)
 
     for t in range(T):
 
@@ -86,118 +124,18 @@ if __name__ == "__main__":
         alpha_star = contexts[:, :d] @ psi_star
         beta_star = contexts[:, d:] @ phi_star
 
-        # print(beta_star)
-
-        # offline optimum algo
+        # offline optimum assortment and prices
         assortment, prices = offlineOptimal.get_assortment_and_pricing(alpha_star, beta_star)
         values = alpha_star - beta_star * prices
         i_t = mnl_selection(values[assortment])
         revenue = prices[i_t] if (i_t is not None) else 0
+        # logging.info(f"Optimum: {alpha_star[assortment]}, {beta_star[assortment]}, {prices[assortment]}, {np.exp(values[assortment]) / (1 + np.sum(np.exp(values[assortment])))}")
+        optimal_revenue = revenue_expectation(values[assortment], prices[assortment])
+        logging.info(f"Optimum expected revenue = {optimal_revenue}")
 
-        logging.info(f"Optimum: {alpha_star[assortment]}, {beta_star[assortment]}, {prices[assortment]}, {np.exp(values[assortment]) / (1 + np.sum(np.exp(values[assortment])))}")
-
-        history_expected_revenue[0, t] = expected_revenue(values[assortment], prices[assortment])
-        logging.info(f"Optimum expected revenue = {history_expected_revenue[0, t]}")
-
-        # our algorithm (MLE from scratch)
-        start = time.time()
-        assortment, prices = dynamicAssortment.get_assortment_and_pricing(contexts)
-        values = alpha_star - beta_star * prices
-        i_t_assortment = mnl_selection(values[assortment])
-        i_t = assortment[i_t_assortment] if i_t_assortment is not None else None
-        dynamicAssortment.selection_feedback(i_t, contexts, assortment, prices)
-        revenue = prices[i_t] if i_t is not None else 0
-        end = time.time()
-
-        # logging.info(f"{alpha_star[assortment]}, {beta_star[assortment]}, {prices[assortment]}, {np.exp(values[assortment]) / (1 + np.sum(np.exp(values[assortment])))}, {i_t_assortment}")
-        logging.info(f"Dynamic Assortment theta NMSE: {np.linalg.norm(dynamicAssortment.theta - theta_star) / np.linalg.norm(theta_star)}")
-        # logging.info(dynamicAssortment.theta)
-        history_expected_revenue[1, t] = expected_revenue(values[assortment], prices[assortment])
-        history_time[0, t] = end - start
-        logging.info(f"Dynamic Assortment regret = {history_expected_revenue[0, t] - history_expected_revenue[1, t]}")
-
-        # our algorithm (online parameter update)
-        start = time.time()
-        assortment, prices = newtonAssortment.get_assortment_and_pricing(contexts)
-        values = alpha_star - beta_star * prices
-        i_t_assortment = mnl_selection(values[assortment])
-        i_t = assortment[i_t_assortment] if i_t_assortment is not None else None
-        newtonAssortment.selection_feedback(i_t, contexts, assortment, prices)
-        revenue = prices[i_t] if i_t is not None else 0
-        end = time.time()
-
-        logging.info(f"Newton Assortment theta NMSE: {np.linalg.norm(newtonAssortment.theta - theta_star) / np.linalg.norm(theta_star)}")
-        history_expected_revenue[2, t] = expected_revenue(values[assortment], prices[assortment])
-        history_time[1, t] = end - start
-        logging.info(f"Newton Assortment regret = {history_expected_revenue[0, t] - history_expected_revenue[2, t]}")
-
-        # Javanmard (pricing only)
-        start = time.time()
-        assortment, prices = javanmardPricing.get_assortment_and_pricing(contexts)
-        values = alpha_star - beta_star * prices
-        i_t_assortment = mnl_selection(values[assortment])
-        i_t = assortment[i_t_assortment] if i_t_assortment is not None else None
-        javanmardPricing.selection_feedback(i_t, contexts, assortment, prices)
-        revenue = prices[i_t] if i_t is not None else 0
-        end = time.time()
-
-        # logging.info(f"Javanmard Pricing theta NMSE: {np.linalg.norm(javanmardPricing.theta - theta_star) / np.linalg.norm(theta_star)}")
-        history_expected_revenue[3, t] = expected_revenue(values[assortment], prices[assortment])
-        history_time[2, t] = end - start
-        logging.info(f"Javanmard Pricing regret = {history_expected_revenue[0, t] - history_expected_revenue[3, t]}")
-
-        # Oh & Iyengar (assortment selection only)
-        start = time.time()
-        assortment, prices = ohIyengarAssortment.get_assortment_and_pricing(contexts)
-        values = alpha_star - beta_star * prices
-        i_t_assortment = mnl_selection(values[assortment])
-        i_t = assortment[i_t_assortment] if i_t_assortment is not None else None
-        ohIyengarAssortment.selection_feedback(i_t, contexts, assortment, prices)
-        revenue = prices[i_t] if i_t is not None else 0
-        end = time.time()
-
-        # logging.info(f"Oh & Iyengar Pricing theta NMSE: {np.linalg.norm(ohIyengarPricing.theta - theta_star) / np.linalg.norm(theta_star)}")
-        history_expected_revenue[4, t] = expected_revenue(values[assortment], prices[assortment])
-        history_time[3, t] = end - start
-        logging.info(f"Oh & Iyengar Assortment regret = {history_expected_revenue[0, t] - history_expected_revenue[4, t]}")
-
-        # Oh & Iyengar with added pricing
-        start = time.time()
-        assortment, prices = ohIyengarPricing.get_assortment_and_pricing(contexts)
-        values = alpha_star - beta_star * prices
-        i_t_assortment = mnl_selection(values[assortment])
-        i_t = assortment[i_t_assortment] if i_t_assortment is not None else None
-        ohIyengarPricing.selection_feedback(i_t, contexts, assortment, prices)
-        revenue = prices[i_t] if i_t is not None else 0
-        end = time.time()
-
-        # logging.info(f"{alpha_star[assortment]}, {beta_star[assortment]}, {prices[assortment]}, {np.exp(values[assortment]) / (1 + np.sum(np.exp(values[assortment])))}, {i_t_assortment}")
-        # logging.info(f"Oh & Iyengar with Pricing theta NMSE: {np.linalg.norm(ohIyengarPricing.theta - theta_star) / np.linalg.norm(theta_star)}")
-        # logging.info(ohIyengarPricing.theta)
-        history_expected_revenue[5, t] = expected_revenue(values[assortment], prices[assortment])
-        history_time[4, t] = end - start
-        logging.info(f"Oh & Iyengar with Pricing regret = {history_expected_revenue[0, t] - history_expected_revenue[5, t]}")
-
-        # Goyal & Perivier for dynamic pricing (no assortment selection)
-        start = time.time()
-        assortment, prices = goyalPerivierDynamicPricing.get_assortment_and_pricing(contexts)
-        values = alpha_star - beta_star * prices
-        i_t_assortment = mnl_selection(values[assortment])
-        i_t = assortment[i_t_assortment] if i_t_assortment is not None else None
-        goyalPerivierDynamicPricing.selection_feedback(i_t, contexts, assortment, prices)
-        revenue = prices[i_t] if i_t is not None else 0
-        end = time.time()
-
-        # logging.info(f"{alpha_star[assortment]}, {beta_star[assortment]}, {prices[assortment]}, {np.exp(values[assortment]) / (1 + np.sum(np.exp(values[assortment])))}, {i_t_assortment}")
-        logging.info(f"Goyal & Perivier Pricing theta NMSE: {np.linalg.norm(goyalPerivierDynamicPricing.theta - theta_star) / np.linalg.norm(theta_star)}")
-        # logging.info(ohIyengarPricing.theta)
-        history_expected_revenue[6, t] = expected_revenue(values[assortment], prices[assortment])
-        history_time[5, t] = end - start
-        logging.info(
-            f"Goyal & Perivier Pricing regret = {history_expected_revenue[0, t] - history_expected_revenue[6, t]}")
-
-        total_revenue = np.sum(history_expected_revenue, axis=1)
-        logging.info(total_revenue[0] - total_revenue[1:])
-
-    np.save(f"results/{experiment_name}/history_expected_revenue.npy", history_expected_revenue)
-    np.save(f"results/{experiment_name}/history_time.npy", history_time)
+        for algo_key, algo in algorithms_list:
+            step_result = algorithm_step(algo_key, algo, contexts, alpha_star, beta_star, optimal_revenue)
+            step_result.update({
+                "t": t
+            })
+            results[algo_key].append(step_result)

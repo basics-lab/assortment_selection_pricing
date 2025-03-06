@@ -1,6 +1,7 @@
 import itertools
 import logging
 import time
+import abc
 
 import numpy as np
 from functools import reduce
@@ -179,8 +180,16 @@ def solve_mle(offered_contexts, selected_contexts, d, init_theta=None, scaling=1
 
     return theta
 
+class Algorithm(abc.ABC):
+    @abc.abstractmethod
+    def get_assortment_and_pricing(self, *args, **kwargs):
+        pass
 
-class OfflineOptimalAlgorithm:
+    def selection_feedback(self, *args, **kwargs):
+        return
+
+
+class OfflineOptimalAlgorithm(Algorithm):
     def __init__(self, K):
         self.K = K
 
@@ -188,7 +197,7 @@ class OfflineOptimalAlgorithm:
         return solve_assortment_and_pricing(self.K, alpha_star, beta_star)
 
 
-class DynamicAlgorithms:
+class DynamicAlgorithms(Algorithm):
     def __init__(self, n, d, K, L0, T0, pool):
         self.pool = pool
         self.K = K
@@ -293,7 +302,7 @@ class NewtonAssortmentPricing(DynamicAlgorithms):
         self.t += 1
 
 
-class JavanmardDynamicPricing:
+class JavanmardDynamicPricing(Algorithm):
     def __init__(self, n, d, K, L0):
         self.K = K
         self.n = n
@@ -354,7 +363,7 @@ class JavanmardDynamicPricing:
             self.episode_len += 1
 
 
-class OhIyengarAssortmentSelection:
+class OhIyengarAssortmentSelection(Algorithm):
     def __init__(self, n, d, K, L0, T0, fixed_prices):
         self.K = K
         self.n = n
@@ -429,7 +438,7 @@ def goyalperivier_update(theta, V, offered_contexts, selected_contexts, lmb):
     return theta
 
 
-class GoyalPerivierDynamicPricing:
+class GoyalPerivierDynamicPricing(Algorithm):
     def __init__(self, n, d, K, L0):
         self.K = K
         self.n = n
@@ -471,8 +480,6 @@ class GoyalPerivierDynamicPricing:
                 best_exp_rev = expected_revenue_k
         random_shock = (2 * np.random.choice(2, len(prices)) - 1) / ((self.t + 1) ** (1/4))
         prices = prices + random_shock
-        logging.debug([alpha, beta])
-        logging.debug(prices)
         return assortment, prices
 
     def selection_feedback(self, i_t, contexts, assortment, prices):
