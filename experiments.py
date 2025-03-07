@@ -6,8 +6,9 @@ import time
 from multiprocessing import Pool
 import argparse
 from collections import defaultdict
+import pandas as pd
 
-from assortment_pricing import algorithms
+from assortment_pricing import algorithms, baselines
 
 if __name__ == "__main__":
 
@@ -19,6 +20,7 @@ if __name__ == "__main__":
     parser.add_argument('-N', type=int, help='Number of available items')
     parser.add_argument('-K', type=int, help='Number of items in the assortment')
     parser.add_argument('-T0_low', type=int, help='Lower bound for number of initialization periods')
+    parser.add_argument('-result_dir', type=str, help='Directory to save results')
 
     args = parser.parse_args()
 
@@ -27,24 +29,27 @@ if __name__ == "__main__":
     T = args.T
     N = args.N
     K = args.K
-    T0_low = args.T0_low
+    result_dir = args.result_dir
 
-    # d = 5
-    # L0 = 0.5
-    # T = 2000
-    # N = 5
-    # K = 5
-    # T0_low = 150
+    hyperparams = {
+        "N": args.N,
+        "K": args.K,
+        "d": args.d,
+        "L0": args.L0,
+        "T": args.T,
+    }
 
-    print(f"Arguments passed: d = {d}, L0 = {L0}, T = {T}, K = {K}, N = {N}, T0_low = {T0_low}")
+    print(f"Arguments passed: d = {d}, L0 = {L0}, T = {T}, K = {K}, N = {N}")
 
-    T0_Dynamic = np.random.randint(T0_low, T0_low + 100, 1)[0] # number of initialization rounds
-    T0_Online = int(1.5 * T0_Dynamic) # number of initialization rounds with online learning
+    T0_low = int(np.sqrt(T))
+    T0_Dynamic = np.random.randint(T0_low, 2 * T0_low, 1)[0] # number of initialization rounds
+    T0_Online = T0_Dynamic # number of initialization rounds with online learning
 
-    experiment_name = f"d{d}_L{L0}_T{T}_N{N}_K{K}_" + str(uuid.uuid4().hex[:8])
-    os.makedirs(f"results/{experiment_name}")
-    print(f"Experiment started: {experiment_name}")
-    logging.basicConfig(filename=f"results/{experiment_name}/experiment.log", format='%(asctime)s: %(message)s', level=logging.DEBUG)
+    experiment_dir = os.path.join(result_dir, str(uuid.uuid4().hex[:8]))
+    os.makedirs(experiment_dir)
+    print(f"Experiment started: {experiment_dir}")
+    log_file_path = os.path.join(experiment_dir, "experiment.log")
+    logging.basicConfig(filename=log_file_path, format='%(asctime)s: %(message)s', level=logging.DEBUG)
     logging.getLogger().addHandler(logging.StreamHandler())
 
     psi_star = np.random.normal(0, 1/np.sqrt(d/2), size=d)
@@ -55,8 +60,9 @@ if __name__ == "__main__":
 
     def mnl_selection(values):
         items = np.concatenate([np.arange(len(values)), [None]])
-        terms = np.concatenate([np.exp(values), [1]])
-        probs = terms / np.sum(terms)
+        logits = np.concatenate((values, [0]))
+        exp_logits = np.exp(logits - np.max(logits))
+        probs = exp_logits / np.sum(exp_logits)
         return np.random.choice(items, p=probs)
 
     def revenue_expectation(values, prices):
@@ -76,10 +82,11 @@ if __name__ == "__main__":
     algorithms_list = [
         ("CAP", algorithms.DynamicAssortmentPricing(N, d, K, L0, T0=T0_Dynamic, pool=compute_pool)),
         ("CAP-ONS", algorithms.NewtonAssortmentPricing(N, d, K, L0, T0=T0_Online, pool=compute_pool)),
-        ("M3P", algorithms.JavanmardDynamicPricing(N, d, K, L0)),
-        ("DBL-MNL", algorithms.OhIyengarAssortmentSelection(N, d, K, L0, T0=T0_Dynamic, fixed_prices=5)),
-        ("DBL-MNL-Pricing", algorithms.OhIyengarWithPricing(N, d, K, L0, T0=T0_Dynamic, pool=compute_pool)),
-        ("ONS-MPP", algorithms.GoyalPerivierDynamicPricing(N, d, K, L0))
+        ("M3P", baselines.JavanmardDynamicPricing(N, d, K, L0)),
+        ("DBL-MNL", baselines.OhIyengarAssortmentSelection(N, d, K, L0, T0=T0_Dynamic, fixed_prices=5)),
+        ("DBL-MNL-Pricing", baselines.OhIyengarWithPricing(N, d, K, L0, T0=T0_Dynamic, pool=compute_pool)),
+        ("ONS-MPP", baselines.GoyalPerivierDynamicPricing(N, d, K, L0)),
+        ("Thompson", baselines.GaussianThompsonSampling(N, d, K, L0, T0=T0_Dynamic, pool=compute_pool))
     ]
 
     def algorithm_step(
@@ -113,7 +120,7 @@ if __name__ == "__main__":
         }
         return step_result
 
-    results = defaultdict(list)
+    results = []
 
     for t in range(T):
 
@@ -136,6 +143,13 @@ if __name__ == "__main__":
         for algo_key, algo in algorithms_list:
             step_result = algorithm_step(algo_key, algo, contexts, alpha_star, beta_star, optimal_revenue)
             step_result.update({
-                "t": t
+                "algo": algo_key,
+                "t": t,
             })
-            results[algo_key].append(step_result)
+            step_result.update(hyperparams)
+            results.append(step_result)
+
+results_df = pd.DataFrame(results)
+filename = os.path.join(experiment_dir, "results.parquet")
+results_df.to_parquet(filename, index=False)
+print(f"Results saved to {filename}.")

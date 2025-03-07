@@ -12,7 +12,9 @@ authors = [
 dependencies = [
     "numpy",
     "scipy",
-    "cvxpy"
+    "cvxpy",
+    "pandas",
+    "pyarrow",
 ]
 
 [tool.setuptools]
